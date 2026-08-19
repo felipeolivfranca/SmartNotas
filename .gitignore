@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv/
+backend/.env
+
+# Dados locais: banco e fotos das notas
+backend/data/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# SO
+Thumbs.db
+.DS_Store
