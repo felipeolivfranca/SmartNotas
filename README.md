@@ -2,8 +2,7 @@
 
 Sistema para descobrir **quais itens estão consumindo o orçamento das compras**.
 Você fotografa a nota fiscal, a IA lê os produtos e o dashboard mostra tudo somado
-por produto no mês — um requeijão comprado em 07/09 mais dois em 12/09 aparecem
-como **3 requeijões**.
+por produto no mês.
 
 - **Backend:** Python + FastAPI + SQLAlchemy + SQLite
 - **Frontend:** React + Vite
