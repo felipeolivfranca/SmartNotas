@@ -4,6 +4,7 @@ import { moeda, periodoAtual, periodoLongo, rotuloCategoria } from './formato'
 import BarList from './components/BarList'
 import EditarItem from './components/EditarItem'
 import ListaNotas from './components/ListaNotas'
+import Login from './components/Login'
 import TabelaItens from './components/TabelaItens'
 import Tiles from './components/Tiles'
 import Upload from './components/Upload'
@@ -11,6 +12,10 @@ import Upload from './components/Upload'
 const TOP_N = 8
 
 export default function App() {
+  // undefined = ainda perguntando ao backend quem está logado; null = ninguém.
+  // Os três estados são distintos de propósito: sem o "ainda não sei", a tela
+  // de login pisca por um instante a cada F5 de quem já está logado.
+  const [usuario, setUsuario] = useState(undefined)
   const [mes, setMes] = useState(periodoAtual())
   const [meses, setMeses] = useState([])
   const [resumo, setResumo] = useState(null)
@@ -20,7 +25,19 @@ export default function App() {
   const [erro, setErro] = useState(null)
   const [editando, setEditando] = useState(null)
 
+  useEffect(() => {
+    api.eu().then(setUsuario).catch(() => setUsuario(null))
+  }, [])
+
+  function limparDados() {
+    setResumo(null)
+    setNotas([])
+    setMeses([])
+    setErro(null)
+  }
+
   const carregar = useCallback(async () => {
+    if (!usuario) return
     setCarregando(true)
     setErro(null)
     try {
@@ -33,11 +50,20 @@ export default function App() {
       setMeses(mesesNovos)
       setNotas(notasNovas)
     } catch (e) {
+      // Sessão expirada no meio do uso: volta para o login em vez de mostrar
+      // "não consegui falar com o backend", que mandaria conferir a coisa errada.
+      if (e.status === 401) {
+        limparDados()
+        setUsuario(null)
+        return
+      }
       setErro(e.message)
     } finally {
       setCarregando(false)
     }
-  }, [mes])
+    // usuario?.id entra nas dependências para que trocar de conta recarregue
+    // tudo — sem isso a próxima pessoa veria o dashboard da anterior.
+  }, [mes, usuario?.id])
 
   useEffect(() => {
     carregar()
@@ -46,6 +72,34 @@ export default function App() {
   useEffect(() => {
     api.health().then(setSaude).catch(() => setSaude(null))
   }, [])
+
+  async function sair() {
+    try {
+      await api.logout()
+    } finally {
+      limparDados()
+      setUsuario(null)
+    }
+  }
+
+  if (usuario === undefined) {
+    return (
+      <div className="auth-tela">
+        <span className="spinner" />
+      </div>
+    )
+  }
+
+  if (usuario === null) {
+    return (
+      <Login
+        onEntrou={(logado) => {
+          limparDados()
+          setUsuario(logado)
+        }}
+      />
+    )
+  }
 
   // O mês atual pode ainda não ter nota; ele entra na lista mesmo assim para
   // não sumir do seletor logo depois de trocar de mês.
@@ -100,6 +154,15 @@ export default function App() {
           {carregando ? <span className="spinner" /> : null}
           Atualizar
         </button>
+
+        <div className="conta">
+          <span className="conta-nome" title={usuario.email}>
+            {usuario.nome}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={sair}>
+            Sair
+          </button>
+        </div>
       </header>
 
       {saude && !saude.ia_configurada ? (
@@ -167,7 +230,7 @@ export default function App() {
         <div className="card-head">
           <h2>Notas enviadas</h2>
         </div>
-        <p className="card-sub">Todas as notas do banco, de todos os períodos.</p>
+        <p className="card-sub">Todas as suas notas, de todos os períodos.</p>
         <ListaNotas notas={notas} onMudou={carregar} />
       </section>
 

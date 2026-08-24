@@ -5,9 +5,45 @@ Você fotografa a nota fiscal, a IA lê os produtos e o dashboard mostra tudo so
 por produto no mês — um requeijão comprado em 07/09 mais dois em 12/09 aparecem
 como **3 requeijões**.
 
+Cada pessoa tem a sua conta: você entra com e-mail e senha e vê apenas as
+suas notas.
+
 - **Backend:** Python + FastAPI + SQLAlchemy + SQLite
 - **Frontend:** React + Vite
 - **IA:** Gemini (visão + structured outputs) via SDK oficial `google-genai`
+- **Login:** senha em hash bcrypt + sessão em cookie httpOnly
+
+---
+
+## Contas e login
+
+Ao abrir o app pela primeira vez, use **Criar conta** — o cadastro é aberto,
+qualquer pessoa com acesso ao endereço pode criar a sua.
+
+O que cada conta enxerga:
+
+- **As notas são privadas.** Toda consulta do dashboard filtra por dono, e uma
+  nota de outra conta responde `404` — inclusive na foto original e na exclusão.
+- **A mesma nota pode ser lançada por duas contas.** O hash do arquivo, que
+  impede o envio em duplicata, é único por usuário e não no banco inteiro: duas
+  pessoas da mesma casa podem fotografar a mesma compra.
+- **Quem já usava a versão sem login não perde nada.** Na primeira vez que o
+  backend sobe, ele adiciona a coluna de dono às tabelas que já existiam, e as
+  notas antigas passam para a **primeira conta criada**.
+
+Como a senha e a sessão são guardadas:
+
+| | Como funciona | Por quê |
+|---|---|---|
+| Senha | hash **bcrypt**, com salt por conta | o fator de trabalho fica dentro do hash, então dá para aumentá-lo depois sem invalidar as senhas já cadastradas |
+| Sessão | cookie `httpOnly`, `SameSite=Lax` | fora do alcance do JavaScript da página e não acompanha requisição vinda de outro site |
+| Token | só o SHA-256 dele vai para o banco | quem copiar o `smartnotas.db` não consegue reconstruir o cookie e entrar como você |
+| Logout | apaga a sessão no servidor | um token copiado antes do logout para de valer na hora |
+
+Login errado responde sempre **"E-mail ou senha incorretos"**, sem dizer qual dos
+dois falhou — a resposta contrária entregaria a lista de quem tem conta. Depois
+de 5 tentativas erradas no mesmo e-mail, novas tentativas são barradas por 15
+minutos.
 
 ---
 
@@ -62,6 +98,13 @@ e a interface avisa disso.
 | `gemini-3.5-flash-lite` | o mais barato e rápido; erra mais em letra miúda | US$ 0,30 / US$ 2,50 |
 | `gemini-2.5-pro` | raciocínio profundo, mais caro e mais lento | US$ 1,25 / US$ 10,00 |
 
+### 3. Sessão (opcional)
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `SMARTNOTAS_SESSION_DIAS` | `14` | dias que um login vale antes de pedir a senha de novo |
+| `SMARTNOTAS_COOKIE_SECURE` | `false` | ligue **só** se servir o app por HTTPS: um cookie `Secure` não é enviado em `http://localhost` e o login pararia de funcionar em desenvolvimento |
+
 ---
 
 ## Instalação
@@ -108,17 +151,25 @@ A documentação interativa da API fica em <http://127.0.0.1:8000/docs>.
 
 ## Testes
 
-O agrupamento é a regra de negócio que mais dói se quebrar, então ele tem um
-teste próprio — que roda **sem chave de API** e num banco em memória:
+Dois testes, ambos rodando **sem chave de API** e sem tocar o banco real:
 
 ```powershell
 cd backend
 .\.venv\Scripts\python.exe tests\test_agrupamento.py
+.\.venv\Scripts\python.exe tests\test_auth.py
 ```
 
-Ele cobre o caso do enunciado (1 requeijão em 07/09 + 2 em 12/09 = 3), a fusão de
-grafias diferentes, a separação por unidade (KG vs UN), o isolamento entre meses
-e a escolha do nome de exibição do grupo.
+**`test_agrupamento.py`** — a regra de negócio que mais dói se quebrar. Cobre o
+caso do enunciado (1 requeijão em 07/09 + 2 em 12/09 = 3), a fusão de grafias
+diferentes, a separação por unidade (KG vs UN), o isolamento entre meses e a
+escolha do nome de exibição do grupo.
+
+**`test_auth.py`** — o login, ponta a ponta pelas rotas HTTP de verdade. Ele
+começa criando um banco no formato **da versão sem login** para exercitar a
+migração, e daí cobre: rotas fechadas sem cookie, cadastro e suas recusas, a
+adoção das notas antigas pela primeira conta, logout revogando a sessão no
+servidor, o freio de 5 tentativas — e o isolamento: uma conta não lê, não edita
+e não apaga a nota da outra.
 
 ---
 
@@ -131,18 +182,23 @@ backend/
       extractor.py     # chama o Gemini com a foto e recebe o JSON validado
       schemas.py       # o formato que o modelo é obrigado a devolver
     routers/
+      auth.py          # cadastro, login, logout
       notas.py         # upload, listagem, imagem, exclusão, correção de item
       dashboard.py     # resumo mensal e meses disponíveis
     services/
+      auth.py          # senha, sessão e o freio de tentativas
       normalizer.py    # chave de agrupamento (acento, caixa, plural)
       dashboard.py     # as agregações do mês
-    models.py          # tabelas notas_fiscais e itens
+    security.py        # hash bcrypt da senha e token de sessão
+    dependencies.py    # resolve o dono da requisição pelo cookie
+    models.py          # tabelas usuarios, sessoes, notas_fiscais e itens
+    database.py        # engine, sessão e a migração do banco sem login
     config.py          # lê o .env
   data/                # banco SQLite e fotos enviadas (criado ao rodar)
 
 frontend/
   src/
-    components/        # Upload, Tiles, BarList, TabelaItens, ListaNotas, EditarItem
+    components/        # Login, Upload, Tiles, BarList, TabelaItens, ListaNotas, EditarItem
     api.js             # cliente HTTP
     formato.js         # moeda, data e quantidade em pt-BR
 ```
@@ -160,4 +216,8 @@ frontend/
   Acima disso o modelo não aproveita a resolução extra, só custaria mais token.
 - **Cada arquivo do upload é independente.** Uma foto ilegível não impede as outras
   do mesmo envio.
-- **Sem login.** O app foi feito para rodar local, na sua máquina.
+- **Nota de outra conta responde 404, nunca 403.** Um 403 confirmaria que aquele
+  id existe, o que já é informação sobre o dado alheio.
+- **O freio de tentativas vive em memória.** Ele reinicia junto com o servidor e
+  não vale entre processos — suficiente para um app que roda local, e o ponto a
+  trocar por Redis se o app um dia for publicado na internet.

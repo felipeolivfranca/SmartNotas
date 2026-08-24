@@ -472,3 +472,79 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 .field-hint { color: var(--text-muted); font-size: 0.76rem; margin-top: 5px; }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+
+/* ---------- login ---------- */
+
+.auth-tela {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  width: min(400px, 100%);
+}
+
+.auth-brand { display: flex; align-items: baseline; gap: 9px; }
+.auth-sub { margin: 6px 0 20px; }
+
+/* Duas abas dentro de um trilho: entrar e criar conta sao o mesmo formulario,
+   e a aba deixa isso obvio sem trocar de tela. */
+.auth-abas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 20px;
+  background: var(--plane);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.auth-aba {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.auth-aba:hover:not(.ativa) { color: var(--text-primary); }
+
+.auth-aba.ativa {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: 550;
+  box-shadow: var(--shadow);
+}
+
+.auth-enviar { width: 100%; justify-content: center; margin-top: 4px; }
+
+.auth-rodape {
+  margin: 18px 0 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+/* ---------- conta na topbar ---------- */
+
+.conta { display: flex; align-items: center; gap: 9px; }
+
+.conta-nome {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

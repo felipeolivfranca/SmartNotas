@@ -2,6 +2,9 @@
 
 O requisito central: itens semelhantes comprados no mesmo período aparecem
 somados. Um requeijão em 07/09 + dois em 12/09 = 3 requeijões em setembro.
+
+Toda função aqui recebe `usuario_id` como primeiro parâmetro depois da sessão e
+o aplica em todo `where`: o dashboard de uma pessoa nunca soma a nota de outra.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ def limites_do_mes(ano: int, mes: int) -> tuple[date, date]:
     return inicio, fim
 
 
-def meses_disponiveis(db: Session) -> list[dict]:
+def meses_disponiveis(db: Session, usuario_id: int) -> list[dict]:
     """Meses que têm itens, do mais recente para o mais antigo."""
     periodo = func.strftime("%Y-%m", Item.data_compra)
     linhas = db.execute(
@@ -30,7 +33,7 @@ def meses_disponiveis(db: Session) -> list[dict]:
             func.sum(Item.valor_total).label("total"),
             func.count(func.distinct(Item.nota_id)).label("notas"),
         )
-        .where(Item.data_compra.is_not(None))
+        .where(Item.usuario_id == usuario_id, Item.data_compra.is_not(None))
         .group_by(periodo)
         .order_by(periodo.desc())
     ).all()
@@ -46,7 +49,7 @@ def meses_disponiveis(db: Session) -> list[dict]:
 
 
 def _rotulos_do_grupo(
-    db: Session, inicio: date, fim: date
+    db: Session, usuario_id: int, inicio: date, fim: date
 ) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], str]]:
     """Escolhe o nome e a categoria de exibição de cada grupo.
 
@@ -63,7 +66,11 @@ def _rotulos_do_grupo(
             Item.categoria,
             func.count(Item.id).label("vezes"),
         )
-        .where(Item.data_compra >= inicio, Item.data_compra < fim)
+        .where(
+            Item.usuario_id == usuario_id,
+            Item.data_compra >= inicio,
+            Item.data_compra < fim,
+        )
         .group_by(Item.nome_normalizado, Item.unidade, Item.nome_canonico, Item.categoria)
     ).all()
 
@@ -93,13 +100,13 @@ def _rotulos_do_grupo(
     )
 
 
-def itens_agrupados(db: Session, inicio: date, fim: date) -> list[dict]:
+def itens_agrupados(db: Session, usuario_id: int, inicio: date, fim: date) -> list[dict]:
     """Um registro por produto, com quantidade e valor somados no período.
 
     Agrupa por (nome_normalizado, unidade): somar 2 UN de tomate com 0,4 KG de
     tomate na mesma linha produziria uma quantidade sem significado.
     """
-    nomes, categorias = _rotulos_do_grupo(db, inicio, fim)
+    nomes, categorias = _rotulos_do_grupo(db, usuario_id, inicio, fim)
 
     linhas = db.execute(
         select(
@@ -118,7 +125,11 @@ def itens_agrupados(db: Session, inicio: date, fim: date) -> list[dict]:
             # todas as linhas que hoje caem nele, e não só uma delas.
             func.group_concat(Item.id).label("ids"),
         )
-        .where(Item.data_compra >= inicio, Item.data_compra < fim)
+        .where(
+            Item.usuario_id == usuario_id,
+            Item.data_compra >= inicio,
+            Item.data_compra < fim,
+        )
         .group_by(Item.nome_normalizado, Item.unidade)
         .order_by(func.sum(Item.valor_total).desc())
     ).all()
@@ -146,14 +157,18 @@ def itens_agrupados(db: Session, inicio: date, fim: date) -> list[dict]:
     return resultado
 
 
-def por_categoria(db: Session, inicio: date, fim: date) -> list[dict]:
+def por_categoria(db: Session, usuario_id: int, inicio: date, fim: date) -> list[dict]:
     linhas = db.execute(
         select(
             Item.categoria,
             func.sum(Item.valor_total).label("valor_total"),
             func.count(Item.id).label("itens"),
         )
-        .where(Item.data_compra >= inicio, Item.data_compra < fim)
+        .where(
+            Item.usuario_id == usuario_id,
+            Item.data_compra >= inicio,
+            Item.data_compra < fim,
+        )
         .group_by(Item.categoria)
         .order_by(func.sum(Item.valor_total).desc())
     ).all()
@@ -168,19 +183,25 @@ def por_categoria(db: Session, inicio: date, fim: date) -> list[dict]:
     ]
 
 
-def resumo(db: Session, ano: int, mes: int) -> dict:
+def resumo(db: Session, usuario_id: int, ano: int, mes: int) -> dict:
     inicio, fim = limites_do_mes(ano, mes)
 
-    agrupados = itens_agrupados(db, inicio, fim)
+    agrupados = itens_agrupados(db, usuario_id, inicio, fim)
     total_gasto = round(sum(i["valor_total"] for i in agrupados), 2)
 
     total_notas = db.scalar(
         select(func.count(NotaFiscal.id)).where(
-            NotaFiscal.data_compra >= inicio, NotaFiscal.data_compra < fim
+            NotaFiscal.usuario_id == usuario_id,
+            NotaFiscal.data_compra >= inicio,
+            NotaFiscal.data_compra < fim,
         )
     )
     total_itens = db.scalar(
-        select(func.count(Item.id)).where(Item.data_compra >= inicio, Item.data_compra < fim)
+        select(func.count(Item.id)).where(
+            Item.usuario_id == usuario_id,
+            Item.data_compra >= inicio,
+            Item.data_compra < fim,
+        )
     )
 
     return {
@@ -192,5 +213,5 @@ def resumo(db: Session, ano: int, mes: int) -> dict:
         # O item mais caro do mês é a resposta direta para "o que está pesando".
         "maior_gasto": agrupados[0] if agrupados else None,
         "itens": agrupados,
-        "categorias": por_categoria(db, inicio, fim),
+        "categorias": por_categoria(db, usuario_id, inicio, fim),
     }

@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database import init_db
-from .routers import dashboard, notas
+from .routers import auth, dashboard, notas
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,18 +34,36 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SmartNotas",
     description="Leitura de notas fiscais com IA e consolidação de gastos por produto.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=False,
+    # O login usa cookie httpOnly; sem credenciais o navegador não o enviaria
+    # numa chamada cross-origin. Por isso a lista de origens é fixa e nunca "*".
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def erro_de_validacao(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Devolve o primeiro erro como frase, não como a lista crua do pydantic.
+
+    O frontend mostra `detail` direto ao usuário; a lista de dicionários
+    apareceria na tela de login como um borrão de JSON.
+    """
+    primeiro = exc.errors()[0] if exc.errors() else {}
+    mensagem = str(primeiro.get("msg", "Dados inválidos."))
+    # "Value error, A senha precisa ter..." -> "A senha precisa ter..."
+    mensagem = mensagem.removeprefix("Value error, ")
+    return JSONResponse(status_code=422, content={"detail": mensagem})
+
+
+app.include_router(auth.router)
 app.include_router(notas.router)
 app.include_router(notas.itens_router)
 app.include_router(dashboard.router)

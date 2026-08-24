@@ -8,15 +8,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..dependencies import usuario_atual
+from ..models import Usuario
 from ..services import dashboard as svc
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/meses")
-def listar_meses(db: Session = Depends(get_db)) -> list[dict]:
+def listar_meses(
+    db: Session = Depends(get_db), usuario: Usuario = Depends(usuario_atual)
+) -> list[dict]:
     """Meses que já têm nota lançada, para popular o seletor de período."""
-    return svc.meses_disponiveis(db)
+    return svc.meses_disponiveis(db, usuario.id)
 
 
 @router.get("/resumo")
@@ -27,6 +31,7 @@ def resumo(
         description="Período no formato AAAA-MM. Omitido = mês atual.",
     ),
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_atual),
 ) -> dict:
     """Resumo do mês: total, itens somados e quebra por categoria."""
     if mes is None:
@@ -37,4 +42,4 @@ def resumo(
         if not 1 <= numero <= 12:
             raise HTTPException(status_code=422, detail="Mês precisa estar entre 01 e 12")
 
-    return svc.resumo(db, ano, numero)
+    return svc.resumo(db, usuario.id, ano, numero)

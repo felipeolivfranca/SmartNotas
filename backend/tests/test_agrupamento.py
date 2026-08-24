@@ -17,17 +17,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.models import Item, NotaFiscal
+from app.models import Item, NotaFiscal, Usuario
 from app.services.dashboard import resumo
 from app.services.normalizer import normalizar_nome
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
 
+# Todo agregado e por dono. Este e o dono deste teste; o isolamento entre
+# usuarios diferentes tem teste proprio em test_auth.py.
+DONO = 1
+
 
 def nota(db, id_, dia, hash_):
     n = NotaFiscal(
         id=id_,
+        usuario_id=DONO,
         arquivo_nome=f"nota{id_}.jpg",
         arquivo_hash=hash_,
         arquivo_path=f"/tmp/nota{id_}.jpg",
@@ -42,6 +47,7 @@ def item(db, nota_id, descricao, canonico, qtd, valor, dia, unidade="UN", catego
     db.add(
         Item(
             nota_id=nota_id,
+            usuario_id=DONO,
             descricao_original=descricao,
             nome_canonico=canonico,
             nome_normalizado=normalizar_nome(canonico),
@@ -65,6 +71,8 @@ def checar(rotulo, obtido, esperado):
 
 
 with Session(engine) as db:
+    db.add(Usuario(id=DONO, nome="Dono", email="dono@teste.com", senha_hash="x"))
+
     d7, d12 = date(2025, 9, 7), date(2025, 9, 12)
 
     nota(db, 1, d7, "h1")
@@ -88,7 +96,7 @@ with Session(engine) as db:
 
     db.commit()
 
-    r = resumo(db, 2025, 9)
+    r = resumo(db, DONO, 2025, 9)
 
     print("Resumo setembro/2025")
     checar("periodo", r["periodo"], "2025-09")
@@ -134,7 +142,7 @@ with Session(engine) as db:
     checar("categoria hortifruti", cats["hortifruti"]["valor_total"], 7.30)
 
     # Outubro deve ficar isolado.
-    r10 = resumo(db, 2025, 10)
+    r10 = resumo(db, DONO, 2025, 10)
     checar("outubro total_itens", r10["total_itens"], 1)
     checar("outubro requeijao qtd", r10["itens"][0]["quantidade"], 5.0)
 

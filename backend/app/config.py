@@ -32,6 +32,24 @@ class Settings:
     def model(self) -> str:
         return os.getenv("SMARTNOTAS_MODEL", "gemini-3.7-flash")
 
+    # --- Login ---
+    # O cookie de sessão. httpOnly, então o JavaScript da página não o enxerga.
+    SESSION_COOKIE: str = "smartnotas_sessao"
+
+    @property
+    def session_dias(self) -> int:
+        """Quantos dias um login continua valendo sem digitar a senha de novo."""
+        try:
+            return max(1, int(os.getenv("SMARTNOTAS_SESSION_DIAS", "14")))
+        except ValueError:
+            return 14
+
+    @property
+    def cookie_secure(self) -> bool:
+        # Em http://localhost um cookie Secure simplesmente não é enviado, por
+        # isso o padrão é desligado. Ligue ao publicar o app atrás de HTTPS.
+        return os.getenv("SMARTNOTAS_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes"}
+
     # Borda maior da imagem enviada ao modelo. Foto de celular chega com 4000px+
     # e o excedente vira custo de token sem ganho de leitura.
     MAX_IMAGE_EDGE: int = 2400
